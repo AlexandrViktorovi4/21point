@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>21 очко — онлайн</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true">
+    <div class="atmos-suits">
+      <span>♠</span><span>♥</span><span>♦</span><span>♣</span>
+      <span>♠</span><span>♥</span>
+    </div>
+  </div>
+
+  <div class="side-dock" id="side-dock">
+    <div class="audio-dock" id="audio-dock">
+      <button type="button" id="btn-audio" class="sound-toggle" aria-expanded="false" aria-controls="audio-panel" title="Громкость">♪</button>
+      <div id="audio-panel" class="audio-panel hidden" role="dialog" aria-label="Музыка">
+        <p class="audio-panel-title">Плеер</p>
+        <div id="track-list" class="track-list" role="listbox" aria-label="Треки"></div>
+        <label class="audio-row">
+          <span class="audio-row-top">
+            <span>Музыка</span>
+            <span id="music-vol-label" class="audio-pct">45%</span>
+          </span>
+          <input type="range" id="music-vol" min="0" max="100" step="1" value="45" />
+        </label>
+        <label class="audio-row">
+          <span class="audio-row-top">
+            <span>Эффекты</span>
+            <span id="sfx-vol-label" class="audio-pct">75%</span>
+          </span>
+          <input type="range" id="sfx-vol" min="0" max="100" step="1" value="75" />
+        </label>
+        <button type="button" id="btn-start-music" class="btn btn-secondary audio-start-btn">Включить музыку</button>
+      </div>
+    </div>
+
+    <div class="values-dock" id="values-dock">
+      <button type="button" id="btn-values" class="sound-toggle values-toggle" aria-expanded="false" aria-controls="values-panel" title="Ценности карт">?</button>
+      <div id="values-panel" class="values-panel hidden" role="dialog" aria-label="Ценности карт">
+        <p class="audio-panel-title">Ценности карт</p>
+        <table class="values-table">
+          <thead>
+            <tr><th>Карта</th><th>Очки</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Туз</td><td>11</td></tr>
+            <tr class="values-note"><td colspan="2">Два туза — золотое очко</td></tr>
+            <tr><td>Король</td><td>4</td></tr>
+            <tr><td>Дама</td><td>3</td></tr>
+            <tr><td>Валет</td><td>2</td></tr>
+            <tr><td>10</td><td>10</td></tr>
+            <tr><td>9</td><td>9</td></tr>
+            <tr><td>8</td><td>8</td></tr>
+            <tr><td>7</td><td>7</td></tr>
+            <tr><td>6</td><td>6</td></tr>
+            <tr><td>5</td><td>5</td></tr>
+            <tr><td>4</td><td>4</td></tr>
+            <tr><td>3</td><td>3</td></tr>
+            <tr><td>2</td><td>2</td></tr>
+          </tbody>
+        </table>
+        <p class="values-hint">Считайте очки сами по картам.</p>
+      </div>
+    </div>
+  </div>
+
+  <main class="app">
+    <!-- Home -->
+    <section id="home" class="screen setup-screen">
+      <div class="setup-inner">
+        <p class="eyebrow">онлайн · карточная игра</p>
+        <h1 class="brand">21<span>очко</span></h1>
+        <div class="brand-suits" aria-hidden="true"><span>♠</span><span class="red">♥</span><span class="red">♦</span><span>♣</span></div>
+        <p class="lead">Играйте с друзьями по сети: создайте комнату или войдите по коду.</p>
+
+        <div class="home-form">
+          <label class="field">
+            Ваше имя
+            <input id="player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="Как вас зовут?" />
+          </label>
+
+          <fieldset class="avatar-picker">
+            <legend>Аватар</legend>
+            <div id="avatar-grid" class="avatar-grid" role="radiogroup" aria-label="Выбор аватара"></div>
+          </fieldset>
+
+          <div class="mode-tabs" role="tablist">
+            <button type="button" class="mode-tab active" data-mode="create" id="tab-create">Создать</button>
+            <button type="button" class="mode-tab" data-mode="join" id="tab-join">Войти</button>
+          </div>
+
+          <div id="create-panel" class="mode-panel">
+            <fieldset class="game-mode">
+              <legend>Режим игры</legend>
+              <label class="mode-option">
+                <input type="radio" name="game-mode" value="wins" checked />
+                <span class="mode-option-body">
+                  <strong>До 10 побед</strong>
+                  <em>Считаем победы в раздачах</em>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="game-mode" value="chips" />
+                <span class="mode-option-body">
+                  <strong>На фишки</strong>
+                  <em>Ставки, банк, стартовый капитал 100</em>
+                </span>
+              </label>
+            </fieldset>
+
+            <fieldset class="game-mode">
+              <legend>Подсчёт очков</legend>
+              <label class="mode-option">
+                <input type="radio" name="score-mode" value="auto" checked />
+                <span class="mode-option-body">
+                  <strong>Автоматически</strong>
+                  <em>Очки на экране считает игра</em>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="score-mode" value="manual" />
+                <span class="mode-option-body">
+                  <strong>Вручную</strong>
+                  <em>Считаете сами по картам</em>
+                </span>
+              </label>
+            </fieldset>
+
+            <fieldset class="player-count">
+              <legend>Максимум игроков</legend>
+              <div class="count-grid" role="radiogroup" aria-label="Максимум игроков">
+                <label class="count-option"><input type="radio" name="max" value="2" checked /><span>2</span></label>
+                <label class="count-option"><input type="radio" name="max" value="3" /><span>3</span></label>
+                <label class="count-option"><input type="radio" name="max" value="4" /><span>4</span></label>
+                <label class="count-option"><input type="radio" name="max" value="5" /><span>5</span></label>
+                <label class="count-option"><input type="radio" name="max" value="6" /><span>6</span></label>
+              </div>
+            </fieldset>
+            <button type="button" id="btn-create" class="btn btn-primary">Создать комнату</button>
+          </div>
+
+          <div id="join-panel" class="mode-panel hidden">
+            <label class="field">
+              Код комнаты
+              <input id="room-code" type="text" maxlength="5" autocomplete="off" placeholder="Например A3K9P" class="code-input" />
+            </label>
+            <button type="button" id="btn-join" class="btn btn-primary">Войти в комнату</button>
+          </div>
+
+          <p id="home-error" class="form-error hidden" role="alert"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lobby -->
+    <section id="lobby" class="screen setup-screen hidden">
+      <div class="setup-inner lobby-inner">
+        <p class="eyebrow">комната</p>
+        <h2 class="lobby-code" id="lobby-code">—————</h2>
+        <p class="lead lobby-hint">Отправьте код друзьям — они зайдут с другого устройства.</p>
+
+        <p id="lobby-mode" class="lobby-mode"></p>
+        <ul id="lobby-list" class="lobby-list"></ul>
+        <p id="lobby-status" class="lobby-status"></p>
+
+        <div class="lobby-actions">
+          <button type="button" id="btn-start" class="btn btn-primary hidden">Начать игру</button>
+          <button type="button" id="btn-copy" class="btn btn-secondary">Скопировать код</button>
+          <button type="button" id="btn-leave-lobby" class="btn btn-ghost">Выйти</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Game -->
+    <section id="game" class="screen game-screen hidden" aria-live="polite">
+      <header class="game-header">
+        <button type="button" id="btn-leave-game" class="btn btn-ghost">← Выйти</button>
+        <h2 class="game-brand">21 очко</h2>
+        <p id="turn-banner" class="turn-banner">Ход игрока</p>
+      </header>
+
+      <p id="room-chip" class="room-chip"></p>
+      <p id="match-banner" class="match-banner"></p>
+      <div id="table" class="table"></div>
+
+      <div id="betting-panel" class="betting-panel hidden">
+        <p class="betting-title">Ваша ставка</p>
+        <div class="bet-row">
+          <button type="button" id="btn-bet-minus" class="btn btn-secondary bet-step">−</button>
+          <input id="bet-amount" type="number" min="5" step="5" value="10" />
+          <button type="button" id="btn-bet-plus" class="btn btn-secondary bet-step">+</button>
+        </div>
+        <div class="bet-presets">
+          <button type="button" class="btn btn-ghost bet-preset" data-bet="5">5</button>
+          <button type="button" class="btn btn-ghost bet-preset" data-bet="10">10</button>
+          <button type="button" class="btn btn-ghost bet-preset" data-bet="25">25</button>
+          <button type="button" class="btn btn-ghost bet-preset" data-bet="all">Ва-банк</button>
+        </div>
+        <button type="button" id="btn-place-bet" class="btn btn-primary">Поставить</button>
+      </div>
+
+      <footer class="game-actions">
+        <button type="button" id="btn-hit" class="btn btn-primary hidden">Ещё</button>
+        <button type="button" id="btn-stand" class="btn btn-secondary hidden">Хватит</button>
+        <p id="wait-hint" class="wait-hint hidden">Ждём ход соперника…</p>
+      </footer>
+    </section>
+
+    <!-- Result -->
+    <div id="result" class="result-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <div class="result-card">
+        <p class="result-label">итог раздачи</p>
+        <h2 id="result-title" class="result-title"></h2>
+        <ul id="result-list" class="result-list"></ul>
+        <div class="result-actions">
+          <button type="button" id="btn-rematch" class="btn btn-primary hidden">Дальше</button>
+          <p id="rematch-wait" class="wait-hint hidden">Ждём хоста…</p>
+          <button type="button" id="btn-to-home" class="btn btn-ghost">В меню</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="sounds.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
