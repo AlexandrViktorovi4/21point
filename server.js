@@ -4,6 +4,10 @@ const express = require("express");
 const { Server } = require("socket.io");
 
 const PORT = process.env.PORT || 3456;
+
+function reply(ack, payload) {
+  if (typeof ack === "function") ack(payload);
+}
 const WINS_TO_FINISH = 10;
 const START_CHIPS = 100;
 const MIN_BET = 5;
@@ -191,8 +195,8 @@ function publicState(room, viewerId) {
         cards: showCards
           ? p.cards
           : p.cards.map(() => ({ hidden: true })),
-        isWinner: Boolean(room.winners?.includes(p.id)),
-        isMatchWinner: Boolean(room.matchWinners?.includes(p.id)),
+        isWinner: Boolean(room.winners && room.winners.includes(p.id)),
+        isMatchWinner: Boolean(room.matchWinners && room.matchWinners.includes(p.id)),
       };
     }),
   };
@@ -530,7 +534,7 @@ function leaveRoom(socket) {
 
   if (room.phase === "playing") {
     const currentPlayer = room.players[room.current];
-    if (currentPlayer?.id === socket.id && currentPlayer.status === "playing") {
+    if (currentPlayer && currentPlayer.id === socket.id && currentPlayer.status === "playing") {
       currentPlayer.status = "stood";
       advanceAfterAction(room);
       return;
@@ -576,10 +580,10 @@ io.on("connection", (socket) => {
       socketRoom.set(socket.id, code);
       socket.join(code);
 
-      ack?.({ ok: true, state: publicState(room, socket.id) });
+      reply(ack, { ok: true, state: publicState(room, socket.id) });
       emitRoom(room);
     } catch (err) {
-      ack?.({ ok: false, error: "Не удалось создать комнату" });
+      reply(ack, { ok: false, error: "Не удалось создать комнату" });
     }
   });
 
@@ -593,15 +597,15 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomCode);
 
       if (!room) {
-        ack?.({ ok: false, error: "Комната не найдена" });
+        reply(ack, { ok: false, error: "Комната не найдена" });
         return;
       }
       if (room.phase !== "lobby") {
-        ack?.({ ok: false, error: "Игра уже началась" });
+        reply(ack, { ok: false, error: "Игра уже началась" });
         return;
       }
       if (room.players.length >= room.maxPlayers) {
-        ack?.({ ok: false, error: "Комната заполнена" });
+        reply(ack, { ok: false, error: "Комната заполнена" });
         return;
       }
 
@@ -610,10 +614,10 @@ io.on("connection", (socket) => {
       socketRoom.set(socket.id, room.code);
       socket.join(room.code);
 
-      ack?.({ ok: true, state: publicState(room, socket.id) });
+      reply(ack, { ok: true, state: publicState(room, socket.id) });
       emitRoom(room);
     } catch (err) {
-      ack?.({ ok: false, error: "Не удалось войти" });
+      reply(ack, { ok: false, error: "Не удалось войти" });
     }
   });
 
@@ -624,20 +628,20 @@ io.on("connection", (socket) => {
   socket.on("game:start", (ack) => {
     const room = findRoom(socket);
     if (!room) {
-      ack?.({ ok: false, error: "Вы не в комнате" });
+      reply(ack, { ok: false, error: "Вы не в комнате" });
       return;
     }
     if (room.hostId !== socket.id) {
-      ack?.({ ok: false, error: "Только хост может начать" });
+      reply(ack, { ok: false, error: "Только хост может начать" });
       return;
     }
     if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "match_over") {
-      ack?.({ ok: false, error: "Игра уже идёт" });
+      reply(ack, { ok: false, error: "Игра уже идёт" });
       return;
     }
     const ready = room.players.filter((p) => p.connected);
     if (ready.length < 2) {
-      ack?.({ ok: false, error: "Нужно минимум 2 игрока онлайн" });
+      reply(ack, { ok: false, error: "Нужно минимум 2 игрока онлайн" });
       return;
     }
 
@@ -652,39 +656,39 @@ io.on("connection", (socket) => {
       room.players = room.players.filter((p) => p.connected || (room.mode === "chips" ? p.chips > 0 : true));
       const stillOnline = room.players.filter((p) => p.connected);
       if (stillOnline.length < 2) {
-        ack?.({ ok: false, error: "Нужно минимум 2 игрока онлайн" });
+        reply(ack, { ok: false, error: "Нужно минимум 2 игрока онлайн" });
         return;
       }
     }
 
     startRound(room);
-    ack?.({ ok: true });
+    reply(ack, { ok: true });
   });
 
   socket.on("game:bet", ({ amount }, ack) => {
     const room = findRoom(socket);
     if (!room || room.phase !== "betting" || room.mode !== "chips") {
-      ack?.({ ok: false, error: "Сейчас нельзя ставить" });
+      reply(ack, { ok: false, error: "Сейчас нельзя ставить" });
       return;
     }
 
     const player = room.players.find((p) => p.id === socket.id);
     if (!player || !player.connected) {
-      ack?.({ ok: false, error: "Игрок не найден" });
+      reply(ack, { ok: false, error: "Игрок не найден" });
       return;
     }
     if (player.betPlaced) {
-      ack?.({ ok: false, error: "Ставка уже сделана" });
+      reply(ack, { ok: false, error: "Ставка уже сделана" });
       return;
     }
     if (player.chips <= 0) {
-      ack?.({ ok: false, error: "Нет фишек" });
+      reply(ack, { ok: false, error: "Нет фишек" });
       return;
     }
 
     let bet = Math.floor(Number(amount));
     if (!Number.isFinite(bet)) {
-      ack?.({ ok: false, error: "Некорректная ставка" });
+      reply(ack, { ok: false, error: "Некорректная ставка" });
       return;
     }
 
@@ -702,22 +706,22 @@ io.on("connection", (socket) => {
       emitRoom(room);
     }
 
-    ack?.({ ok: true });
+    reply(ack, { ok: true });
   });
 
   socket.on("game:hit", (ack) => {
     const room = findRoom(socket);
     if (!room || room.phase !== "playing") {
-      ack?.({ ok: false, error: "Сейчас нельзя" });
+      reply(ack, { ok: false, error: "Сейчас нельзя" });
       return;
     }
     const player = room.players[room.current];
     if (!player || player.id !== socket.id) {
-      ack?.({ ok: false, error: "Не ваш ход" });
+      reply(ack, { ok: false, error: "Не ваш ход" });
       return;
     }
     if (player.status !== "playing") {
-      ack?.({ ok: false, error: "Ход уже завершён" });
+      reply(ack, { ok: false, error: "Ход уже завершён" });
       return;
     }
 
@@ -734,44 +738,44 @@ io.on("connection", (socket) => {
       emitRoom(room);
     }
 
-    ack?.({ ok: true });
+    reply(ack, { ok: true });
   });
 
   socket.on("game:stand", (ack) => {
     const room = findRoom(socket);
     if (!room || room.phase !== "playing") {
-      ack?.({ ok: false, error: "Сейчас нельзя" });
+      reply(ack, { ok: false, error: "Сейчас нельзя" });
       return;
     }
     const player = room.players[room.current];
     if (!player || player.id !== socket.id) {
-      ack?.({ ok: false, error: "Не ваш ход" });
+      reply(ack, { ok: false, error: "Не ваш ход" });
       return;
     }
 
     player.status = "stood";
     advanceAfterAction(room);
-    ack?.({ ok: true });
+    reply(ack, { ok: true });
   });
 
   socket.on("game:rematch", (ack) => {
     const room = findRoom(socket);
     if (!room) {
-      ack?.({ ok: false, error: "Вы не в комнате" });
+      reply(ack, { ok: false, error: "Вы не в комнате" });
       return;
     }
     if (room.hostId !== socket.id) {
-      ack?.({ ok: false, error: "Только хост может продолжить" });
+      reply(ack, { ok: false, error: "Только хост может продолжить" });
       return;
     }
     if (room.phase !== "finished" && room.phase !== "match_over") {
-      ack?.({ ok: false, error: "Раздача ещё не окончена" });
+      reply(ack, { ok: false, error: "Раздача ещё не окончена" });
       return;
     }
 
     const ready = room.players.filter((p) => p.connected);
     if (ready.length < 2) {
-      ack?.({ ok: false, error: "Нужно минимум 2 игрока онлайн" });
+      reply(ack, { ok: false, error: "Нужно минимум 2 игрока онлайн" });
       return;
     }
 
@@ -784,7 +788,7 @@ io.on("connection", (socket) => {
     }
 
     startRound(room);
-    ack?.({ ok: true });
+    reply(ack, { ok: true });
   });
 
   socket.on("disconnect", () => {
