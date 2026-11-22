@@ -12,6 +12,8 @@ const WINS_TO_FINISH = 10;
 const START_CHIPS = 100;
 const MIN_BET = 5;
 const DEFAULT_BET = 10;
+const DEALER_ID = "dealer";
+const DEALER_STAND_AT = 17;
 
 const SUITS = [
   { symbol: "♠", color: "black" },
@@ -135,13 +137,92 @@ function makePlayer(id, name, room, avatar) {
     chips: room.mode === "chips" ? START_CHIPS : 0,
     bet: 0,
     betPlaced: false,
+    isDealer: false,
+  };
+}
+
+function makeDealer() {
+  return {
+    id: DEALER_ID,
+    name: "Дилер",
+    avatar: "dealer",
+    cards: [],
+    status: "playing",
+    connected: true,
+    wins: 0,
+    chips: 0,
+    bet: 0,
+    betPlaced: true,
+    isDealer: true,
+  };
+}
+
+function resetDealer(room) {
+  room.dealer = makeDealer();
+  room.dealerTurn = false;
+}
+
+function serializeSeat(p, room, viewerId, revealAll, autoScore) {
+  const isDealer = Boolean(p.isDealer);
+  const isSelf = !isDealer && p.id === viewerId;
+  let showCards = revealAll || isSelf;
+  let cards;
+
+  if (isDealer && !revealAll) {
+    // Одна открытая, остальные закрыты
+    showCards = false;
+    cards = (p.cards || []).map((c, i) => (i === 0 ? c : { hidden: true }));
+  } else if (showCards) {
+    cards = p.cards;
+  } else {
+    cards = (p.cards || []).map(() => ({ hidden: true }));
+  }
+
+  let status = p.status;
+  let golden = isGoldenOchko(p.cards) || p.status === "golden";
+  if (!revealAll && !isSelf) {
+    if (isDealer) {
+      if (status === "bust" || status === "golden" || status === "stood") {
+        status = "playing";
+      }
+      golden = false;
+    } else if (status === "bust" || status === "golden" || status === "stood") {
+      status = "stood";
+      golden = false;
+    }
+  }
+
+  let score = null;
+  if (isDealer) {
+    if (revealAll && (autoScore || true)) score = handValue(p.cards);
+  } else if (showCards && (autoScore || revealAll)) {
+    score = handValue(p.cards);
+  }
+
+  return {
+    id: p.id,
+    name: p.name,
+    avatar: p.avatar || "selfie",
+    status,
+    connected: p.connected,
+    wins: p.wins,
+    chips: p.chips,
+    bet: p.bet,
+    betPlaced: p.betPlaced,
+    score,
+    golden,
+    cardCount: (p.cards || []).length,
+    cards,
+    isDealer,
+    isWinner: Boolean(room.winners && room.winners.includes(p.id)),
+    isMatchWinner: Boolean(room.matchWinners && room.matchWinners.includes(p.id)),
   };
 }
 
 function publicState(room, viewerId) {
   const revealAll = room.phase === "finished" || room.phase === "match_over";
-
   const autoScore = room.scoreMode !== "manual";
+  if (!room.dealer) resetDealer(room);
 
   return {
     code: room.code,
@@ -155,50 +236,15 @@ function publicState(room, viewerId) {
     defaultBet: DEFAULT_BET,
     phase: room.phase,
     current: room.current,
+    dealerTurn: Boolean(room.dealerTurn),
     youId: viewerId,
     pot: room.pot || 0,
     resultTitle: room.resultTitle || null,
     matchOver: room.phase === "match_over",
-    players: room.players.map((p) => {
-      const isSelf = p.id === viewerId;
-      const showCards = revealAll || isSelf;
-
-      // До вскрытия чужой перебор/золотое не светим — только «хватит»
-      let status = p.status;
-      let golden = isGoldenOchko(p.cards) || p.status === "golden";
-      if (!showCards) {
-        if (status === "bust" || status === "golden" || status === "stood") {
-          status = "stood";
-        }
-        golden = false;
-      }
-
-      // Авто: очки во время игры. Вручную: только в итоге раздачи.
-      let score = null;
-      if (showCards && (autoScore || revealAll)) {
-        score = handValue(p.cards);
-      }
-
-      return {
-        id: p.id,
-        name: p.name,
-        avatar: p.avatar || "selfie",
-        status,
-        connected: p.connected,
-        wins: p.wins,
-        chips: p.chips,
-        bet: p.bet,
-        betPlaced: p.betPlaced,
-        score,
-        golden,
-        cardCount: p.cards.length,
-        cards: showCards
-          ? p.cards
-          : p.cards.map(() => ({ hidden: true })),
-        isWinner: Boolean(room.winners && room.winners.includes(p.id)),
-        isMatchWinner: Boolean(room.matchWinners && room.matchWinners.includes(p.id)),
-      };
-    }),
+    dealer: serializeSeat(room.dealer, room, viewerId, revealAll, autoScore),
+    players: room.players.map((p) =>
+      serializeSeat(p, room, viewerId, revealAll, autoScore)
+    ),
   };
 }
 
@@ -224,6 +270,7 @@ function resetMatchStats(room) {
     player.cards = [];
     player.status = "playing";
   }
+  resetDealer(room);
   room.pot = 0;
   room.winners = [];
   room.matchWinners = [];
@@ -236,16 +283,18 @@ function playersWhoCanBet(room) {
 
 function allBetsPlaced(room) {
   const eligible = playersWhoCanBet(room);
-  return eligible.length >= 2 && eligible.every((p) => p.betPlaced);
+  return eligible.length >= 1 && eligible.every((p) => p.betPlaced);
 }
 
 function startBetting(room) {
   room.phase = "betting";
   room.deck = [];
   room.current = 0;
+  room.dealerTurn = false;
   room.resultTitle = null;
   room.winners = [];
   room.pot = 0;
+  resetDealer(room);
 
   for (const player of room.players) {
     player.cards = [];
@@ -260,7 +309,7 @@ function startBetting(room) {
   }
 
   const eligible = playersWhoCanBet(room);
-  if (eligible.length < 2) {
+  if (eligible.length < 1) {
     finishMatchChips(room);
     return;
   }
@@ -272,9 +321,11 @@ function beginDeal(room) {
   room.deck = createDeck();
   room.phase = "playing";
   room.current = 0;
+  room.dealerTurn = false;
   room.resultTitle = null;
   room.winners = [];
   room.pot = 0;
+  resetDealer(room);
 
   for (const player of room.players) {
     player.cards = [];
@@ -303,8 +354,21 @@ function beginDeal(room) {
     }
   }
 
-  // Золотое очко сразу завершает раздачу
-  if (room.players.some((p) => p.status === "golden")) {
+  const dealer = room.dealer;
+  dealer.cards.push(draw(room), draw(room));
+  if (isGoldenOchko(dealer.cards)) {
+    dealer.status = "golden";
+  } else if (handValue(dealer.cards) === 21) {
+    dealer.status = "stood";
+  } else {
+    dealer.status = "playing";
+  }
+
+  // Золотое очко у игрока или дилера — сразу итог
+  if (
+    room.players.some((p) => p.status === "golden") ||
+    dealer.status === "golden"
+  ) {
     finishRound(room);
     return;
   }
@@ -317,7 +381,7 @@ function beginDeal(room) {
   }
 
   if (room.current >= room.players.length) {
-    finishRound(room);
+    startDealerTurn(room);
     return;
   }
 
@@ -348,12 +412,103 @@ function nextPlayable(room, from) {
 function advanceAfterAction(room) {
   const next = nextPlayable(room, room.current);
   if (next >= room.players.length) {
-    finishRound(room);
+    startDealerTurn(room);
     return;
   }
   room.current = next;
   room.phase = "playing";
+  room.dealerTurn = false;
   emitRoom(room);
+}
+
+function humansNeedDealer(room) {
+  return room.players.some(
+    (p) =>
+      p.cards.length > 0 &&
+      p.status !== "out" &&
+      p.status !== "bust"
+  );
+}
+
+function startDealerTurn(room) {
+  const dealer = room.dealer || makeDealer();
+  room.dealer = dealer;
+  room.dealerTurn = true;
+  room.phase = "playing";
+
+  if (!humansNeedDealer(room)) {
+    if (dealer.status === "playing") dealer.status = "stood";
+    room.dealerTurn = false;
+    finishRound(room);
+    return;
+  }
+
+  emitRoom(room);
+  setTimeout(() => dealerStep(room), 650);
+}
+
+function dealerStep(room) {
+  if (!rooms.has(room.code)) return;
+  if (room.phase !== "playing" || !room.dealerTurn) return;
+
+  const dealer = room.dealer;
+  if (!dealer) {
+    finishRound(room);
+    return;
+  }
+
+  if (dealer.status !== "playing") {
+    room.dealerTurn = false;
+    finishRound(room);
+    return;
+  }
+
+  const score = handValue(dealer.cards);
+  if (score >= DEALER_STAND_AT) {
+    dealer.status = score > 21 ? "bust" : "stood";
+    emitRoom(room);
+    room.dealerTurn = false;
+    setTimeout(() => {
+      if (rooms.has(room.code)) finishRound(room);
+    }, 500);
+    return;
+  }
+
+  dealer.cards.push(draw(room));
+  const next = handValue(dealer.cards);
+  if (next > 21) dealer.status = "bust";
+  else if (next === 21 || next >= DEALER_STAND_AT) dealer.status = "stood";
+
+  emitRoom(room);
+
+  if (dealer.status !== "playing") {
+    room.dealerTurn = false;
+    setTimeout(() => {
+      if (rooms.has(room.code)) finishRound(room);
+    }, 550);
+  } else {
+    setTimeout(() => dealerStep(room), 700);
+  }
+}
+
+function compareVsDealer(player, dealer) {
+  const pScore = handValue(player.cards);
+  const dScore = handValue(dealer.cards);
+  const pBust = player.status === "bust" || pScore > 21;
+  const dBust = dealer.status === "bust" || dScore > 21;
+  const pGolden = player.status === "golden" || isGoldenOchko(player.cards);
+  const dGolden = dealer.status === "golden" || isGoldenOchko(dealer.cards);
+
+  if (player.status === "out" || player.cards.length === 0) return "skip";
+  if (pGolden && dGolden) return "push";
+  if (pGolden) return "win";
+  if (dGolden) return "lose";
+  if (pBust && dBust) return "push";
+  if (pBust) return "lose";
+  if (dBust) return "win";
+  if (pScore > dScore) return "win";
+  if (pScore < dScore) return "lose";
+  return "push";
 }
 
 function finishMatchWins(room, winner) {
@@ -380,97 +535,56 @@ function finishMatchChips(room) {
   emitRoom(room);
 }
 
-function payoutWinners(room, winners, titleSolo, titleTie) {
+function finishRound(room) {
+  room.phase = "finished";
+  room.dealerTurn = false;
+  if (!room.dealer) resetDealer(room);
+
+  const dealer = room.dealer;
+  const winners = [];
+  const pushers = [];
+
+  for (const player of room.players) {
+    const result = compareVsDealer(player, dealer);
+    if (result === "win") winners.push(player);
+    if (result === "push") pushers.push(player);
+  }
+
   room.winners = winners.map((w) => w.id);
 
   if (room.mode === "wins") {
-    if (winners.length === 1) {
-      winners[0].player.wins += 1;
-      room.resultTitle = titleSolo(winners[0]);
+    for (const w of winners) w.wins += 1;
+
+    if (winners.length === 0 && pushers.length === 0) {
+      room.resultTitle = "Дилер забирает раздачу";
+    } else if (winners.length === 1 && pushers.length === 0) {
+      room.resultTitle = `${winners[0].name} обыграл дилера`;
+    } else if (winners.length > 0) {
+      room.resultTitle = `Обыграли дилера: ${winners.map((w) => w.name).join(", ")}`;
     } else {
-      room.resultTitle = titleTie(winners);
-    }
-    return;
-  }
-
-  const pot = room.pot;
-  const share = Math.floor(pot / winners.length);
-  let remainder = pot - share * winners.length;
-
-  for (const w of winners) {
-    let gain = share;
-    if (remainder > 0) {
-      gain += 1;
-      remainder -= 1;
-    }
-    w.player.chips += gain;
-  }
-
-  for (const p of room.players) {
-    p.bet = 0;
-  }
-  room.pot = 0;
-
-  if (winners.length === 1) {
-    room.resultTitle = titleSolo(winners[0]);
-  } else {
-    room.resultTitle = titleTie(winners);
-  }
-}
-
-function finishRound(room) {
-  room.phase = "finished";
-
-  const contested = room.players
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      score: handValue(p.cards),
-      status: p.status,
-      golden: p.status === "golden" || isGoldenOchko(p.cards),
-      player: p,
-    }))
-    .filter((p) => p.status !== "bust" && p.status !== "out" && p.player.cards.length > 0);
-
-  const golden = contested.filter((p) => p.golden);
-
-  if (golden.length > 0) {
-    payoutWinners(
-      room,
-      golden,
-      (w) => `Золотое очко! Победил ${w.name}`,
-      (ws) => `Золотое очко: ${ws.map((w) => w.name).join(", ")}`
-    );
-  } else if (contested.length === 0) {
-    room.resultTitle = "Все перебрали";
-    room.winners = [];
-    if (room.mode === "chips" && room.pot > 0) {
-      for (const p of room.players) {
-        if (p.bet > 0) {
-          p.chips += p.bet;
-          p.bet = 0;
-        }
-      }
-      room.pot = 0;
+      room.resultTitle = "Ничья с дилером";
     }
   } else {
-    const best = Math.max(...contested.map((p) => p.score));
-    const winners = contested.filter((p) => p.score === best);
-    payoutWinners(
-      room,
-      winners,
-      (w) =>
-        room.mode === "chips"
-          ? `${w.name} забирает банк`
-          : `Победил ${w.name}`,
-      (ws) =>
-        room.mode === "chips"
-          ? `Банк делится: ${ws.map((w) => w.name).join(", ")}`
-          : `Ничья: ${ws.map((w) => w.name).join(", ")}`
-    );
+    for (const player of room.players) {
+      if (!player.bet) continue;
+      const result = compareVsDealer(player, dealer);
+      if (result === "win") player.chips += player.bet * 2;
+      else if (result === "push") player.chips += player.bet;
+      player.bet = 0;
+    }
+    room.pot = 0;
+
+    if (winners.length === 0 && pushers.length === 0) {
+      room.resultTitle = "Дилер забирает ставки";
+    } else if (winners.length === 1 && pushers.length === 0) {
+      room.resultTitle = `${winners[0].name} обыграл дилера`;
+    } else if (winners.length > 0) {
+      room.resultTitle = `Выиграли у дилера: ${winners.map((w) => w.name).join(", ")}`;
+    } else {
+      room.resultTitle = "Ничья со ставками";
+    }
   }
 
-  // Check match end
   if (room.mode === "wins") {
     const champ = room.players.find((p) => p.wins >= WINS_TO_FINISH);
     if (champ) {
@@ -479,7 +593,11 @@ function finishRound(room) {
     }
   } else {
     const withChips = room.players.filter((p) => p.chips > 0);
-    if (withChips.length <= 1) {
+    if (withChips.length <= 1 && room.players.length > 1) {
+      finishMatchChips(room);
+      return;
+    }
+    if (withChips.length === 0) {
       finishMatchChips(room);
       return;
     }
@@ -568,10 +686,12 @@ io.on("connection", (socket) => {
         deck: [],
         current: 0,
         pot: 0,
+        dealerTurn: false,
         resultTitle: null,
         winners: [],
         matchWinners: [],
         players: [],
+        dealer: makeDealer(),
       };
 
       room.players.push(makePlayer(socket.id, name, room, avatar));
@@ -640,8 +760,8 @@ io.on("connection", (socket) => {
       return;
     }
     const ready = room.players.filter((p) => p.connected);
-    if (ready.length < 2) {
-      reply(ack, { ok: false, error: "Нужно минимум 2 игрока онлайн" });
+    if (ready.length < 1) {
+      reply(ack, { ok: false, error: "Нужен хотя бы 1 игрок онлайн" });
       return;
     }
 
@@ -655,8 +775,8 @@ io.on("connection", (socket) => {
       // Next round — keep score/chips, drop only fully disconnected if needed
       room.players = room.players.filter((p) => p.connected || (room.mode === "chips" ? p.chips > 0 : true));
       const stillOnline = room.players.filter((p) => p.connected);
-      if (stillOnline.length < 2) {
-        reply(ack, { ok: false, error: "Нужно минимум 2 игрока онлайн" });
+      if (stillOnline.length < 1) {
+        reply(ack, { ok: false, error: "Нужен хотя бы 1 игрок онлайн" });
         return;
       }
     }
@@ -711,7 +831,7 @@ io.on("connection", (socket) => {
 
   socket.on("game:hit", (ack) => {
     const room = findRoom(socket);
-    if (!room || room.phase !== "playing") {
+    if (!room || room.phase !== "playing" || room.dealerTurn) {
       reply(ack, { ok: false, error: "Сейчас нельзя" });
       return;
     }
@@ -743,7 +863,7 @@ io.on("connection", (socket) => {
 
   socket.on("game:stand", (ack) => {
     const room = findRoom(socket);
-    if (!room || room.phase !== "playing") {
+    if (!room || room.phase !== "playing" || room.dealerTurn) {
       reply(ack, { ok: false, error: "Сейчас нельзя" });
       return;
     }

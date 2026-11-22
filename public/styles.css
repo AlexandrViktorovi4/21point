@@ -516,6 +516,14 @@ body {
   border-width: 2px;
 }
 
+.avatar-dealer {
+  background: linear-gradient(145deg, #1a3d32, #0d241c);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  border-color: rgba(212, 162, 74, 0.45);
+}
+
 .seat-identity {
   display: flex;
   align-items: flex-start;
@@ -1049,6 +1057,17 @@ body {
   letter-spacing: 0.08em;
 }
 
+.dealer-row {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed rgba(232, 196, 110, 0.28);
+}
+
+.players-row {
+  display: grid;
+  gap: 0.85rem;
+}
+
 .seat {
   padding: 0.95rem 1.05rem;
   border-radius: 16px;
@@ -1058,6 +1077,11 @@ body {
   transition: border-color 0.25s, background 0.25s, box-shadow 0.25s, transform 0.25s;
   position: relative;
   z-index: 1;
+}
+
+.seat.dealer {
+  background: linear-gradient(165deg, rgba(30, 55, 45, 0.55), rgba(0, 0, 0, 0.2));
+  border-color: rgba(212, 162, 74, 0.28);
 }
 
 .seat.you {

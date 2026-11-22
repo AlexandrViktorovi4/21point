@@ -72,8 +72,79 @@
   }
 
   function avatarHtml(id, sizeClass = "") {
+    if (id === "dealer") {
+      return `<span class="avatar avatar-dealer ${sizeClass}" aria-hidden="true">♠</span>`;
+    }
     const a = avatarMeta(id);
     return `<span class="avatar avatar-photo ${sizeClass}" aria-hidden="true"><img src="${a.src}" alt="" /></span>`;
+  }
+
+  function seatHtml(s, player, i, options = {}) {
+    const isDealer = Boolean(player.isDealer || options.isDealer);
+    const isActive =
+      (!isDealer && i === s.current && s.phase === "playing" && !s.dealerTurn) ||
+      (isDealer && s.dealerTurn && s.phase === "playing");
+    const isYou = !isDealer && player.id === s.youId;
+    const classes = [
+      "seat",
+      isDealer ? "dealer" : "",
+      isActive ? "active" : "",
+      player.status === "bust" ? "bust" : "",
+      player.status === "stood" ? "stood" : "",
+      player.status === "golden" || player.golden ? "golden" : "",
+      player.status === "out" ? "out" : "",
+      player.isWinner || player.isMatchWinner ? "winner" : "",
+      isYou ? "you" : "",
+      !player.connected ? "offline" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const name = isDealer
+      ? player.name
+      : isYou
+        ? `${player.name} (вы)`
+        : player.name;
+    const showHand =
+      isDealer ||
+      s.phase === "playing" ||
+      s.phase === "finished" ||
+      s.phase === "match_over";
+
+    return `
+      <article class="${classes}">
+        <div class="seat-top">
+          <div class="seat-identity">
+            ${avatarHtml(player.avatar, "avatar-md")}
+            <div>
+              <h3 class="seat-name">${escapeHtml(name)}</h3>
+              <span class="seat-status">${statusLabel(player, isActive, s.phase)}</span>
+              <span class="seat-meta">${
+                isDealer ? "дом" : escapeHtml(metaLine(s, player))
+              }</span>
+            </div>
+          </div>
+          ${
+            s.phase === "betting" && !isDealer
+              ? `<div class="seat-score">${player.betPlaced ? player.bet : "…"}</div>`
+              : player.score != null
+                ? `<div class="seat-score">${player.score}</div>`
+                : ""
+          }
+        </div>
+        ${
+          showHand
+            ? `<div class="hand">${(player.cards || [])
+                .map((c, idx) => cardHtml(c, idx))
+                .join("")}</div>`
+            : `<div class="hand hand-empty">${
+                player.chips <= 0 && s.mode === "chips"
+                  ? "Без фишек"
+                  : "Ожидание ставки"
+              }</div>`
+        }
+      </article>
+    `;
   }
 
   function renderAvatarPicker() {
@@ -432,9 +503,9 @@
       })
       .join("");
 
-    els.lobbyStatus.textContent = `${s.players.length} / ${s.maxPlayers} игроков`;
+    els.lobbyStatus.textContent = `${s.players.length} / ${s.maxPlayers} игроков · есть дилер`;
     els.btnStart.classList.toggle("hidden", !isHost);
-    els.btnStart.disabled = s.players.filter((p) => p.connected).length < 2;
+    els.btnStart.disabled = s.players.filter((p) => p.connected).length < 1;
   }
 
   function renderGame(s) {
@@ -444,16 +515,21 @@
     if (s.mode === "chips") {
       els.matchBanner.textContent =
         s.phase === "betting"
-          ? `Делайте ставки · банк соберётся после всех`
-          : `Банк: ${s.pot || 0}`;
+          ? `Ставки против дилера`
+          : `Ставки в игре: ${s.pot || 0}`;
     } else {
       const leader = [...s.players].sort((a, b) => b.wins - a.wins)[0];
-      els.matchBanner.textContent = `До ${s.winsToFinish} побед · лидирует ${leader?.name || "—"} (${leader?.wins || 0})`;
+      els.matchBanner.textContent = `До ${s.winsToFinish} побед против дилера · лидирует ${
+        (leader && leader.name) || "—"
+      } (${(leader && leader.wins) || 0})`;
     }
 
     const currentPlayer = s.players[s.current];
     const myTurn =
-      s.phase === "playing" && currentPlayer && currentPlayer.id === s.youId;
+      s.phase === "playing" &&
+      !s.dealerTurn &&
+      currentPlayer &&
+      currentPlayer.id === s.youId;
     const self = me(s);
     const needBet =
       s.phase === "betting" &&
@@ -462,64 +538,19 @@
       self.chips > 0 &&
       !self.betPlaced;
 
-    els.table.innerHTML = s.players
-      .map((player, i) => {
-        const isActive = i === s.current && s.phase === "playing";
-        const isYou = player.id === s.youId;
-        const classes = [
-          "seat",
-          isActive ? "active" : "",
-          player.status === "bust" ? "bust" : "",
-          player.status === "stood" ? "stood" : "",
-          player.status === "golden" || player.golden ? "golden" : "",
-          player.status === "out" ? "out" : "",
-          player.isWinner || player.isMatchWinner ? "winner" : "",
-          isYou ? "you" : "",
-          !player.connected ? "offline" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
+    const dealerBlock = s.dealer
+      ? `<div class="dealer-row">${seatHtml(s, s.dealer, -1, { isDealer: true })}</div>`
+      : "";
+    const playersBlock = `<div class="players-row">${s.players
+      .map((player, i) => seatHtml(s, player, i))
+      .join("")}</div>`;
 
-        const name = isYou ? `${player.name} (вы)` : player.name;
-        const showHand = s.phase === "playing" || s.phase === "finished" || s.phase === "match_over";
-
-        return `
-          <article class="${classes}">
-            <div class="seat-top">
-              <div class="seat-identity">
-                ${avatarHtml(player.avatar, "avatar-md")}
-                <div>
-                  <h3 class="seat-name">${escapeHtml(name)}</h3>
-                  <span class="seat-status">${statusLabel(player, isActive, s.phase)}</span>
-                  <span class="seat-meta">${escapeHtml(metaLine(s, player))}</span>
-                </div>
-              </div>
-              ${
-                s.phase === "betting"
-                  ? `<div class="seat-score">${player.betPlaced ? player.bet : "…"}</div>`
-                  : player.score != null
-                    ? `<div class="seat-score">${player.score}</div>`
-                    : ""
-              }
-            </div>
-            ${
-              showHand
-                ? `<div class="hand">${(player.cards || [])
-                    .map((c, idx) => cardHtml(c, idx))
-                    .join("")}</div>`
-                : `<div class="hand hand-empty">${
-                    player.chips <= 0 && s.mode === "chips"
-                      ? "Без фишек"
-                      : "Ожидание ставки"
-                  }</div>`
-            }
-          </article>
-        `;
-      })
-      .join("");
+    els.table.innerHTML = dealerBlock + playersBlock;
 
     if (s.phase === "betting") {
       els.turnBanner.textContent = needBet ? "Ваша ставка" : "Ждём ставки…";
+    } else if (s.phase === "playing" && s.dealerTurn) {
+      els.turnBanner.textContent = "Ход дилера…";
     } else if (s.phase === "playing" && currentPlayer) {
       els.turnBanner.textContent =
         currentPlayer.id === s.youId ? "Ваш ход" : `Ход: ${currentPlayer.name}`;
@@ -539,7 +570,10 @@
       myTurn || needBet || (s.phase !== "playing" && s.phase !== "betting")
     );
     if (s.phase === "betting" && !needBet) {
-      els.waitHint.textContent = "Ждём ставки соперников…";
+      els.waitHint.textContent = "Ждём ставки…";
+      els.waitHint.classList.remove("hidden");
+    } else if (s.phase === "playing" && s.dealerTurn) {
+      els.waitHint.textContent = "Дилер добирает карты…";
       els.waitHint.classList.remove("hidden");
     } else if (s.phase === "playing" && !myTurn) {
       els.waitHint.textContent = "Ждём ход соперника…";
@@ -550,11 +584,18 @@
     els.result.classList.remove("hidden");
     els.resultTitle.textContent = s.resultTitle || "Итог";
 
-    els.resultList.innerHTML = s.players
+    const resultSeats = s.dealer ? [s.dealer, ...s.players] : s.players;
+    els.resultList.innerHTML = resultSeats
       .map((p) => {
         const bust = p.status === "bust";
-        const cls =
-          p.isMatchWinner || p.isWinner ? "is-winner" : bust ? "is-bust" : "";
+        const isDealer = Boolean(p.isDealer);
+        const cls = [
+          p.isMatchWinner || p.isWinner ? "is-winner" : "",
+          bust ? "is-bust" : "",
+          isDealer ? "is-dealer" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
         let tag =
           p.status === "golden" || p.golden
             ? "золотое очко"
@@ -567,8 +608,9 @@
                 : p.score != null
                   ? `${p.score}`
                   : "карты вскрыты";
-        if (s.mode === "wins") tag += ` · ${p.wins} поб.`;
-        if (s.mode === "chips") tag += ` · ${p.chips} фиш.`;
+        if (!isDealer && s.mode === "wins") tag += ` · ${p.wins} поб.`;
+        if (!isDealer && s.mode === "chips") tag += ` · ${p.chips} фиш.`;
+        if (isDealer) tag = (p.score != null ? `${p.score}` : tag) + " · дом";
         return `
           <li class="${cls}">
             <span class="result-player">${avatarHtml(p.avatar, "avatar-sm")}<strong>${escapeHtml(p.name)}</strong></span>
